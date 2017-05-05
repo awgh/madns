@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/miekg/dns"
@@ -52,22 +53,9 @@ func main() {
 
 	listenString := ":" + strconv.Itoa(config.Port)
 
-	for k, v := range config.Handlers {
-		if k == "." {
-			continue
-		}
-		log.Println(k, v)
-		dns.HandleFunc(dns.Fqdn(k), func(w dns.ResponseWriter, req *dns.Msg) {
-			handleForwarding(w, req, &v, &config)
-		})
-	}
-	cnf, ok := config.Handlers["."]
-	if ok {
-		log.Println(".", cnf)
-		dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
-			handleForwarding(w, req, &cnf, &config)
-		})
-	}
+	dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
+		handleDNS(w, req, config)
+	}) // pattern-matching of HandleFunc sucks, have to do our own
 
 	go serve("tcp", listenString)
 	go serve("udp", listenString)
@@ -90,11 +78,43 @@ func serve(net, addr string) {
 	}
 }
 
-func handleForwarding(w dns.ResponseWriter, req *dns.Msg, c *MadnsSubConfig, config *MadnsConfig) {
+func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 
-	log.Println("handleForwarding:", c, req)
+	// DETERMINE WHICH CONFIG APPLIES
+	var c MadnsSubConfig
+	processThis := false
+	for k, v := range config.Handlers {
+		if k == "." { // check default case last
+			continue
+		}
+		reqFqdn := strings.ToLower(req.Question[0].Name)
+		handlerFqdn := strings.ToLower(dns.Fqdn(k))
+		//log.Println(w.RemoteAddr().String(), fqdn, k)
 
-	// REDIRECT
+		if reqFqdn == handlerFqdn || strings.HasSuffix(reqFqdn, "."+handlerFqdn) {
+			//if ok, err := regexp.MatchString(".*\\."+regexp.QuoteMeta(fqdn)+"\\.", dns.Fqdn(k)); ok && err == nil {
+			c = v
+			processThis = true
+			break
+		}
+	}
+	if !processThis {
+		cnf, ok := config.Handlers["."] // is there a default handler?
+		if ok {
+			c = cnf
+			processThis = true
+		}
+	}
+	if !processThis {
+		log.Println("no handler for domain: ", req.Question[0].Name)
+		m := new(dns.Msg)
+		m.SetReply(req)
+		m.SetRcode(req, dns.RcodeServerFailure)
+		w.WriteMsg(m)
+		return // no subsequent handling
+	}
+
+	// REDIRECT, if directed
 	if len(c.Redirect) > 0 {
 		dnsClient := &dns.Client{Net: "udp", ReadTimeout: 4 * time.Second, WriteTimeout: 4 * time.Second, SingleInflight: true}
 		if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
@@ -122,13 +142,18 @@ func handleForwarding(w dns.ResponseWriter, req *dns.Msg, c *MadnsSubConfig, con
 		}
 	}
 
-	// EMAIL NOTIFICATION
+	// EMAIL NOTIFICATION, if directed
 	if len(c.NotifyEmail) > 0 {
-		smtpSend(c.NotifyEmail, req.String(), config)
+
+		body := "source: " + w.RemoteAddr().String() + "\n" +
+			"proto: " + w.RemoteAddr().Network() + "\n" +
+			"request:\n" + req.String() + "\n"
+
+		smtpSend(c.NotifyEmail, body, config)
 	}
 }
 
-func smtpSend(to string, body string, config *MadnsConfig) {
+func smtpSend(to string, body string, config MadnsConfig) {
 	from := config.SMTPUser
 	pass := config.SMTPPassword
 	authhost, _, err := net.SplitHostPort(config.SMTPServer)
