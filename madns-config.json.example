@@ -1,0 +1,18 @@
+{
+    "SmtpUser":"SMTP_USERNAME",
+    "SmtpPassword":"SMTP_PASSWORD",
+    "SmtpServer":"smtp.gmail.com:587",
+
+    "Port": 53, 
+
+    "Handlers": {
+        ".": {
+            "Redirect": "192.168.1.1:53",
+            "NotifyEmail": ""
+        },
+        "my.sub.domain": {
+            "Redirect": "192.168.1.1:53",
+            "NotifyEmail": "USER_TO_NOTIFY@example.com"
+        }
+    }
+}
