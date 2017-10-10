@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"net/smtp"
 	"os"
 	"os/signal"
 	"strconv"
@@ -21,6 +20,7 @@ type MadnsConfig struct {
 	SMTPUser     string
 	SMTPPassword string
 	SMTPServer   string // make this "hostname:port", "smtp.gmail.com:587" for gmail+TLS
+	SMTPDelay    int    // number of seconds to aggregate responses before sending an email
 
 	Port     int
 	Handlers map[string]MadnsSubConfig
@@ -30,6 +30,7 @@ type MadnsConfig struct {
 type MadnsSubConfig struct {
 	Redirect    string
 	NotifyEmail string
+	Respond     string
 }
 
 func main() {
@@ -114,12 +115,14 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 		return // no subsequent handling
 	}
 
-	// REDIRECT, if directed
+	// REDIRECT, if desired (mutually exclusive with RESPOND)
 	if len(c.Redirect) > 0 {
 		dnsClient := &dns.Client{Net: "udp", ReadTimeout: 4 * time.Second, WriteTimeout: 4 * time.Second, SingleInflight: true}
 		if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
 			dnsClient.Net = "tcp"
 		}
+
+		log.Println("redirecting using protocol: " + dnsClient.Net)
 
 		retries := 1
 	retry:
@@ -140,6 +143,27 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 				w.WriteMsg(m)
 			}
 		}
+		// RESPOND, if desired (mutually exclusive with REDIRECT)
+	} else if len(c.Respond) > 0 {
+		m := new(dns.Msg)
+		m.SetReply(req)
+		m.SetRcode(req, dns.RcodeSuccess)
+
+		m.Answer = make([]dns.RR, len(req.Question))
+		for i := range req.Question {
+			log.Println("Responding to " + req.Question[i].Name + " with " + c.Respond)
+
+			rr := new(dns.A)
+			rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
+				Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
+			rr.A = net.ParseIP(c.Respond)
+			if rr.A == nil {
+				log.Println("Invalid IP in Respond clause, skipping...")
+			} else {
+				m.Answer[i] = rr
+			}
+		}
+		w.WriteMsg(m)
 	}
 
 	// EMAIL NOTIFICATION, if directed
@@ -147,33 +171,8 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 
 		body := "source: " + w.RemoteAddr().String() + "\n" +
 			"proto: " + w.RemoteAddr().Network() + "\n" +
-			"request:\n" + req.String() + "\n"
+			"request:\n" + req.String() + "\n\n"
 
-		smtpSend(c.NotifyEmail, body, config)
+		debouncedSendEmail(c.NotifyEmail, body, config)
 	}
-}
-
-func smtpSend(to string, body string, config MadnsConfig) {
-	from := config.SMTPUser
-	pass := config.SMTPPassword
-	authhost, _, err := net.SplitHostPort(config.SMTPServer)
-	if err != nil {
-		log.Printf("SMTPServer field syntax error: %s", err)
-		return
-	}
-	msg := "From: " + from + "\n" +
-		"To: " + to + "\n" +
-		"Subject: Madns Alert\n\n" +
-		body
-
-	err = smtp.SendMail(config.SMTPServer,
-		smtp.PlainAuth("", from, pass, authhost),
-		from, []string{to}, []byte(msg))
-
-	if err != nil {
-		log.Printf("SMTP error: %s", err)
-		return
-	}
-
-	log.Print("sent email to " + to)
 }

@@ -2,6 +2,7 @@
     "SmtpUser":"SMTP_USERNAME",
     "SmtpPassword":"SMTP_PASSWORD",
     "SmtpServer":"smtp.gmail.com:587",
+    "SmtpDelay" : 30,
 
     "Port": 53, 
 
@@ -11,7 +12,7 @@
             "NotifyEmail": ""
         },
         "my.sub.domain": {
-            "Redirect": "192.168.1.1:53",
+            "Respond": "192.168.1.1",
             "NotifyEmail": "USER_TO_NOTIFY@example.com"
         }
     }
