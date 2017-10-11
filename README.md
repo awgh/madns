@@ -45,7 +45,10 @@ git clone https://github.com/awgh/madns.git
 "SmtpUser":"yourburneremail@gmail.com",
 "SmtpPassword":"<password to yourburneremail>",
 "SmtpServer":"smtp.gmail.com:587",
+"SmtpDelay":30,
 ```
+The SmtpDelay parameter determines how many seconds madns will batch up alerts into a single email.  By default, this is set to 1 minute, so there will be a 1 minute delay before the first email is sent unless the SmtpDelay is set.
+
 #### Port
 Standard DNS port, only change if you know your setup differs.
 `"Port": 53`
@@ -57,14 +60,14 @@ This is where you define the domain/subdomain to trigger your email notification
 
 ```
 ".": {
-        "Redirect": "” // used to forward traffic to another DNS server
+        "Redirect": "8.8.8.8:53" // used to forward traffic to another DNS server, REQUIRES IP address AND port
         "NotifyEmail": "" // the email address to notify when this handler is invoked
      },
 ```
 Now you’ll want to create a subdomain that will trigger when a DNS lookup is performed on it for testing double blind XXE/SQLi/etc. It can be useful to setup an email with a +filterkeyword to make it easier to alert you when you’ve got a successful hit.
 ```
 "your.triggering.domain": { 
-        "Redirect": "",
+        "Respond": "192.168.1.1",  // used to respond with a fixed IP address, cannot be used with Redirect. (just IP, no port)
         "NotifyEmail": "youremail+filterkeyword@domain.com"
         }
 ```
