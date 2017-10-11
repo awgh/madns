@@ -51,6 +51,7 @@ The SmtpDelay parameter determines how many seconds madns will batch up alerts i
 
 #### Port
 Standard DNS port, only change if you know your setup differs.
+
 `"Port": 53`
 
 #### Handlers
@@ -90,9 +91,11 @@ Also ensure that incoming/outgoing traffic on port 53 is open and outgoing SMTP 
 
 #### Test madns
 Get the nameserver registered for your domain
+
 `dig domain -t NS   `
 
 Use that nameserver to query your subdomain
+
 `dig @<nameserver.from.previous.dig> subdomain.domain -t NS`
 
 If all is well you should see something like
@@ -108,6 +111,7 @@ If all is well you should see something like
 **TODO** Add notes pertaining to static address response when feature is added
 
 Now test with curl
+
 `curl subdomain.subdomain.domain`
 
 On the madns server you see notifications to stdout that it hit the Handler and sent an email such as:
