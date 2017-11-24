@@ -25,20 +25,29 @@ source /etc/profile
 `mkdir -p $HOME/go/src/`
 
 ##### Download madns
+If you want to make changes to the code, do this:
 ```
 cd $HOME/go/src
 git clone https://github.com/awgh/madns.git
+```
+
+If you just want to install the binary, do this:
+```
+go get github.com/awgh/madns
 ```
 #### Grab DNS go package dependency
 `go get -v github.com/miekg/dns`
 
 #### Build madns
-`go build`
+Change to the desired install directory and:
+`go build github.com/awgh/madns`
 
 #### Create madns-config based off template
-`cp madns-config.example.json madns-config.json`
+`cp ~/go/src/github.com/awgh/madns/madns-config.example.json ./madns-config.json`
 
 ### Setup madns config
+
+Edit the madns-config.json file, according to the following instructions.
 
 #### SMTP
 ```
@@ -77,7 +86,11 @@ So gmail does that whole security thing and won't let madns log in and
 perform SMTP unless you enable less secure apps. https://www.google.com/settings/security/lesssecureapps
 
 #### Start madns
+If you're listening to the default port 53 (or anything lower than 1024):
 `sudo ./madns &`
+
+For ports above 1024:
+`./madns &`
 
 #### Configure your domain
 Add an subdomain record (an A record) in your DNS management section of your domain to point to the IP address that madns is running on. For example:
@@ -108,7 +121,7 @@ If all is well you should see something like
 ;; ADDITIONAL SECTION:
 <special.domain.>          3600    IN      A       <ip.of.host.running.madns>
 ```
-**TODO** Add notes pertaining to static address response when feature is added
+
 
 Now test with curl
 
