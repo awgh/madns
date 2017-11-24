@@ -87,9 +87,11 @@ perform SMTP unless you enable less secure apps. https://www.google.com/settings
 
 #### Start madns
 If you're listening to the default port 53 (or anything lower than 1024):
+
 `sudo ./madns &`
 
 For ports above 1024:
+
 `./madns &`
 
 #### Configure your domain
