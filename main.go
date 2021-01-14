@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/miekg/dns"
@@ -17,10 +18,14 @@ import (
 
 // MadnsConfig - Structure for JSON config files
 type MadnsConfig struct {
-	SMTPUser     string
-	SMTPPassword string
-	SMTPServer   string // make this "hostname:port", "smtp.gmail.com:587" for gmail+TLS
-	SMTPDelay    int    // number of seconds to aggregate responses before sending an email
+	SMTPUser     string `json:",omitempty"`
+	SMTPPassword string `json:",omitempty"`
+
+	// make this "hostname:port", "smtp.gmail.com:587" for gmail+TLS
+	SMTPServer string `json:",omitempty"`
+
+	// number of seconds to aggregate responses before sending an email
+	SMTPDelay int `json:",omitempty"`
 
 	Port     int
 	Handlers map[string]MadnsSubConfig
@@ -28,9 +33,9 @@ type MadnsConfig struct {
 
 // MadnsSubConfig - Structure for Subdomain portion of JSON config files
 type MadnsSubConfig struct {
-	Redirect    string
-	NotifyEmail string
-	Respond     string
+	Redirect    string `json:",omitempty"`
+	NotifyEmail string `json:",omitempty"`
+	Respond     string `json:",omitempty"`
 }
 
 func main() {
@@ -63,6 +68,7 @@ func main() {
 
 	sig := make(chan os.Signal)
 	signal.Notify(sig)
+	signal.Ignore(syscall.SIGURG)
 	for {
 		select {
 		case s := <-sig:
