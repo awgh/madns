@@ -45,7 +45,7 @@ https://medium.com/@niktrix/getting-rid-of-systemd-resolved-consuming-port-53-60
 
 
 ### Handlers
-This is where you define the domain/subdomain to trigger your email notification.**
+This is where you define the domain/subdomain to trigger your email notification.
 
 Each handler has a trigger portion, which describes the (sub)domains that it will handle, and **either** a Redirect command or a Respond command.  You must have a Redirect or a Respond command in each handler, but not both!
 
@@ -182,7 +182,7 @@ Alias=madns.service
 
 Finally, reload the systemd config files and start/enable madns:
 ```
-systemctl daemon-reload
-systemctl enable madns
-systemctl start madns
+sudo systemctl daemon-reload
+sudo systemctl enable madns
+sudo systemctl start madns
 ```
