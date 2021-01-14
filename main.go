@@ -96,10 +96,8 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 		}
 		reqFqdn := strings.ToLower(req.Question[0].Name)
 		handlerFqdn := strings.ToLower(dns.Fqdn(k))
-		//log.Println(w.RemoteAddr().String(), fqdn, k)
 
 		if reqFqdn == handlerFqdn || strings.HasSuffix(reqFqdn, "."+handlerFqdn) {
-			//if ok, err := regexp.MatchString(".*\\."+regexp.QuoteMeta(fqdn)+"\\.", dns.Fqdn(k)); ok && err == nil {
 			c = v
 			processThis = true
 			break
