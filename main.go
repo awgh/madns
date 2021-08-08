@@ -157,13 +157,27 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 		for i := range req.Question {
 			log.Println("Responding to " + req.Question[i].Name + " with " + c.Respond)
 
-			rr := new(dns.A)
-			rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
-				Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-			rr.A = net.ParseIP(c.Respond)
-			if rr.A == nil {
-				log.Println("Invalid IP in Respond clause, skipping...")
+			ip := net.ParseIP(c.Respond)
+			if ip == nil {
+				// This is not a valid IP address, so assume it's a CNAME
+				rr := new(dns.CNAME)
+				rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
+					Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 0}
+				rr.Target = strings.TrimSuffix(c.Respond, ".") + "."
+				m.Answer[i] = rr
+			} else if ip.To4() == nil {
+				// This is an IPv6 address, so do a AAAA record
+				rr := new(dns.AAAA)
+				rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
+					Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
+				rr.AAAA = ip
+				m.Answer[i] = rr
 			} else {
+				// This is an IPv4 address, so do an A record
+				rr := new(dns.A)
+				rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
+					Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
+				rr.A = ip
 				m.Answer[i] = rr
 			}
 		}
