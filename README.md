@@ -57,7 +57,7 @@ Additionally, handlers can have a NotifyEmail instruction, which notify you by e
 Redirect commands will redirect the request to an upstream DNS server.  Redirect commands require the IP address and the port, like "8.8.8.8:53".
 
 #### Respond handlers
-Respond commands will respond with a fixed response.  Respond commands only need the IP address.
+Respond commands will respond with a fixed response.  Respond commands only need the IP address or the domain name (for a CNAME).  IP addresses can be either IPv4 or IPv6, and will generate an A/AAAA record accordingly.
 
 
 ### Examples
