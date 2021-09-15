@@ -14,6 +14,14 @@
         "my.sub.domain": {
             "Respond": "192.168.1.1",
             "NotifyEmail": "USER_TO_NOTIFY@example.com"
+        },
+        "my.ipv6.sub.domain": {
+            "Respond": "2001:db8:3333:4444:5555:6666:7777:8888",
+            "NotifyEmail": "USER_TO_NOTIFY@example.com"
+        },
+        "example.evil.com": {
+            "Respond": "example.com",
+            "NotifyEmail": "USER_TO_NOTIFY@example.com"
         }
     }
 }
