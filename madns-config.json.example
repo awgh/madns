@@ -22,6 +22,10 @@
         "example.evil.com": {
             "Respond": "example.com",
             "NotifyEmail": "USER_TO_NOTIFY@example.com"
+        },
+        "slack.evil.com": {
+            "Respond": "example.com",
+            "NotifySlack": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
         }
     }
 }

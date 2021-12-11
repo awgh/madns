@@ -36,6 +36,7 @@ type MadnsSubConfig struct {
 	Redirect    string `json:",omitempty"`
 	NotifyEmail string `json:",omitempty"`
 	Respond     string `json:",omitempty"`
+	NotifySlack string `json:",omitempty"`
 }
 
 func main() {
@@ -184,13 +185,17 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 		w.WriteMsg(m)
 	}
 
+	body := "source: " + w.RemoteAddr().String() + "\n" +
+		"proto: " + w.RemoteAddr().Network() + "\n" +
+		"request:\n" + req.String() + "\n\n"
+
 	// EMAIL NOTIFICATION, if directed
 	if len(c.NotifyEmail) > 0 {
-
-		body := "source: " + w.RemoteAddr().String() + "\n" +
-			"proto: " + w.RemoteAddr().Network() + "\n" +
-			"request:\n" + req.String() + "\n\n"
-
 		debouncedSendEmail(c.NotifyEmail, body, config)
+	}
+
+	// Slack Notification, if directed
+	if len(c.NotifySlack) > 0 {
+		sendSlackMessage(c.NotifySlack, body)
 	}
 }
