@@ -10,8 +10,8 @@
 
 ### Install go
 ```
-wget https://golang.org/dl/go1.15.6.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.15.6.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.17.5.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.17.5.linux-amd64.tar.gz
 ```
 
 ### Add go to your environment/PATH
@@ -22,7 +22,7 @@ source ~/.profile
 
 ### Install madns (installs to ~/go/bin/madns)
 ```
-GO111MODULE=on go get github.com/awgh/madns@latest
+go install github.com/awgh/madns@latest
 ```
 
 ### Create madns-config based off template
