@@ -38,7 +38,7 @@ func sendSlackMessage(webhook string, body string) {
 
 	defer resp.Body.Close()
 
-	if resp.Status != "200" {
+	if resp.StatusCode != 200 {
 		respBody, _ := ioutil.ReadAll(resp.Body)
 		log.Printf("HTTP request failed with status %s, response %s", resp.Status, string(respBody))
 		return
