@@ -49,7 +49,7 @@ This is where you define the domain/subdomain to trigger your email notification
 
 Each handler has a trigger portion, which describes the (sub)domains that it will handle, and **either** a Redirect command or a Respond command.  You must have a Redirect or a Respond command in each handler, but not both!
 
-Additionally, handlers can have a NotifyEmail instruction, which notify you by email when the handler is invoked.
+Additionally, handlers can have a NotifyEmail instruction, which notify you by email when the handler is invoked. They can also use the NotifySlack instruction, which sends the same notification to a Slack channel via webhooks.
 
 **.** is the default DNS handler, if a query doesn't match any other handler it will use this handler.
 
