@@ -18,14 +18,14 @@ import (
 
 // MadnsConfig - Structure for JSON config files
 type MadnsConfig struct {
-	SMTPUser     string `json:",omitempty"`
-	SMTPPassword string `json:",omitempty"`
+	SMTPUser     string
+	SMTPPassword string
 
 	// make this "hostname:port", "smtp.gmail.com:587" for gmail+TLS
-	SMTPServer string `json:",omitempty"`
+	SMTPServer string
 
 	// number of seconds to aggregate responses before sending an email
-	SMTPDelay int `json:",omitempty"`
+	SMTPDelay int
 
 	Port     int
 	Handlers map[string]MadnsSubConfig
@@ -33,10 +33,10 @@ type MadnsConfig struct {
 
 // MadnsSubConfig - Structure for Subdomain portion of JSON config files
 type MadnsSubConfig struct {
-	Redirect    string `json:",omitempty"`
-	NotifyEmail string `json:",omitempty"`
-	Respond     string `json:",omitempty"`
-	NotifySlack string `json:",omitempty"`
+	Redirect    string
+	NotifyEmail string
+	Respond     string
+	NotifySlack string
 }
 
 func main() {
