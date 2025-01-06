@@ -2,8 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"flag"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -48,13 +49,14 @@ func main() {
 	b, err := os.ReadFile(*configFile)
 	if err != nil || *usage {
 		if err != nil {
-			log.Println(err.Error())
+			slog.Error(err.Error())
 		}
 		flag.Usage()
 		return
 	}
 	if err = json.Unmarshal(b, &config); err != nil {
-		log.Fatal(err.Error())
+		slog.Error(err.Error())
+		os.Exit(1)
 	}
 
 	listenString := ":" + strconv.Itoa(config.Port)
@@ -72,7 +74,8 @@ func main() {
 	for {
 		select {
 		case s := <-sig:
-			log.Fatalf("fatal: signal %s received\n", s)
+			slog.Error(fmt.Sprintf("signal %s received\n", s))
+			os.Exit(1)
 		}
 	}
 }
@@ -81,7 +84,8 @@ func serve(net, addr string) {
 	server := &dns.Server{Addr: addr, Net: net, TsigSecret: nil}
 	err := server.ListenAndServe()
 	if err != nil {
-		log.Fatalf("Failed to setup the %s server: %v\n", net, err)
+		slog.Error(fmt.Sprintf("Failed to setup the %s server: %v\n", net, err))
+		os.Exit(1)
 	}
 }
 
@@ -111,7 +115,7 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 		}
 	}
 	if !processThis {
-		log.Println("no handler for domain: ", req.Question[0].Name)
+		slog.Warn("no handler for domain: " + req.Question[0].Name)
 		m := new(dns.Msg)
 		m.SetReply(req)
 		m.SetRcode(req, dns.RcodeServerFailure)
@@ -126,7 +130,7 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 			dnsClient.Net = "tcp"
 		}
 
-		log.Println("redirecting using protocol: " + dnsClient.Net)
+		slog.Info("redirecting using protocol: " + dnsClient.Net)
 
 		retries := 1
 	retry:
@@ -137,10 +141,10 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 		} else {
 			if retries > 0 {
 				retries--
-				log.Println("retrying...")
+				slog.Debug("retrying...")
 				goto retry
 			} else {
-				log.Printf("failure to forward request %q\n", err)
+				slog.Warn(fmt.Sprintf("failure to forward request %q\n", err))
 				m := new(dns.Msg)
 				m.SetReply(req)
 				m.SetRcode(req, dns.RcodeServerFailure)
@@ -155,7 +159,7 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 
 		m.Answer = make([]dns.RR, len(req.Question))
 		for i := range req.Question {
-			log.Println("Responding to " + req.Question[i].Name + " with " + c.Respond)
+			slog.Info("Responding to " + req.Question[i].Name + " with " + c.Respond)
 
 			ip := net.ParseIP(c.Respond)
 			if ip == nil {
