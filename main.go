@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -46,7 +45,7 @@ func main() {
 	configFile := flag.String("c", "madns-config.json", "madns JSON Config File")
 	flag.Parse()
 
-	b, err := ioutil.ReadFile(*configFile)
+	b, err := os.ReadFile(*configFile)
 	if err != nil || *usage {
 		if err != nil {
 			log.Println(err.Error())
@@ -67,7 +66,7 @@ func main() {
 	go serve("tcp", listenString)
 	go serve("udp", listenString)
 
-	sig := make(chan os.Signal)
+	sig := make(chan os.Signal, 1)
 	signal.Notify(sig)
 	signal.Ignore(syscall.SIGURG)
 	for {
