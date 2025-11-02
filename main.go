@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"flag"
-	"io/ioutil"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -12,20 +12,22 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"sync"
+	"sync/atomic"
 
 	"github.com/miekg/dns"
 )
 
 // MadnsConfig - Structure for JSON config files
 type MadnsConfig struct {
-	SMTPUser     string `json:",omitempty"`
-	SMTPPassword string `json:",omitempty"`
+	SMTPUser     string
+	SMTPPassword string
 
 	// make this "hostname:port", "smtp.gmail.com:587" for gmail+TLS
-	SMTPServer string `json:",omitempty"`
+	SMTPServer string
 
 	// number of seconds to aggregate responses before sending an email
-	SMTPDelay int `json:",omitempty"`
+	SMTPDelay int
 
 	Port     int
 	Handlers map[string]MadnsSubConfig
@@ -33,11 +35,20 @@ type MadnsConfig struct {
 
 // MadnsSubConfig - Structure for Subdomain portion of JSON config files
 type MadnsSubConfig struct {
-	Redirect    string `json:",omitempty"`
-	NotifyEmail string `json:",omitempty"`
-	Respond     string `json:",omitempty"`
-	NotifySlack string `json:",omitempty"`
+	Redirect    string
+	NotifyEmail string
+	Respond     string
+	NotifySlack string
+	Rebind	    *MadnsRebindConfig
 }
+
+// MadnsRebindConfig - Rebind requires more data and I'd like to add strategies one day
+type MadnsRebindConfig struct {
+	Addrs []string
+}
+
+// Yes, big ugly global variable, but :shrug:
+var RebindMap sync.Map = sync.Map{}
 
 func main() {
 
@@ -46,16 +57,17 @@ func main() {
 	configFile := flag.String("c", "madns-config.json", "madns JSON Config File")
 	flag.Parse()
 
-	b, err := ioutil.ReadFile(*configFile)
+	b, err := os.ReadFile(*configFile)
 	if err != nil || *usage {
 		if err != nil {
-			log.Println(err.Error())
+			slog.Error(err.Error())
 		}
 		flag.Usage()
 		return
 	}
 	if err = json.Unmarshal(b, &config); err != nil {
-		log.Fatal(err.Error())
+		slog.Error(err.Error())
+		os.Exit(1)
 	}
 
 	listenString := ":" + strconv.Itoa(config.Port)
@@ -67,13 +79,14 @@ func main() {
 	go serve("tcp", listenString)
 	go serve("udp", listenString)
 
-	sig := make(chan os.Signal)
+	sig := make(chan os.Signal, 1)
 	signal.Notify(sig)
 	signal.Ignore(syscall.SIGURG)
 	for {
 		select {
 		case s := <-sig:
-			log.Fatalf("fatal: signal %s received\n", s)
+			slog.Error(fmt.Sprintf("signal %s received\n", s))
+			os.Exit(1)
 		}
 	}
 }
@@ -82,7 +95,8 @@ func serve(net, addr string) {
 	server := &dns.Server{Addr: addr, Net: net, TsigSecret: nil}
 	err := server.ListenAndServe()
 	if err != nil {
-		log.Fatalf("Failed to setup the %s server: %v\n", net, err)
+		slog.Error(fmt.Sprintf("Failed to setup the %s server: %v\n", net, err))
+		os.Exit(1)
 	}
 }
 
@@ -90,6 +104,7 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 
 	// DETERMINE WHICH CONFIG APPLIES
 	var c MadnsSubConfig
+	var ck string
 	processThis := false
 	for k, v := range config.Handlers {
 		if k == "." { // check default case last
@@ -99,6 +114,7 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 		handlerFqdn := strings.ToLower(dns.Fqdn(k))
 
 		if reqFqdn == handlerFqdn || strings.HasSuffix(reqFqdn, "."+handlerFqdn) {
+			ck = k
 			c = v
 			processThis = true
 			break
@@ -107,12 +123,13 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 	if !processThis {
 		cnf, ok := config.Handlers["."] // is there a default handler?
 		if ok {
+			ck = "."
 			c = cnf
 			processThis = true
 		}
 	}
 	if !processThis {
-		log.Println("no handler for domain: ", req.Question[0].Name)
+		slog.Warn("no handler for domain: " + req.Question[0].Name)
 		m := new(dns.Msg)
 		m.SetReply(req)
 		m.SetRcode(req, dns.RcodeServerFailure)
@@ -122,67 +139,17 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 
 	// REDIRECT, if desired (mutually exclusive with RESPOND)
 	if len(c.Redirect) > 0 {
-		dnsClient := &dns.Client{Net: "udp", ReadTimeout: 4 * time.Second, WriteTimeout: 4 * time.Second, SingleInflight: true}
-		if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
-			dnsClient.Net = "tcp"
-		}
-
-		log.Println("redirecting using protocol: " + dnsClient.Net)
-
-		retries := 1
-	retry:
-		r, _, err := dnsClient.Exchange(req, c.Redirect)
-		if err == nil {
-			r.Compress = true
-			w.WriteMsg(r)
-		} else {
-			if retries > 0 {
-				retries--
-				log.Println("retrying...")
-				goto retry
-			} else {
-				log.Printf("failure to forward request %q\n", err)
-				m := new(dns.Msg)
-				m.SetReply(req)
-				m.SetRcode(req, dns.RcodeServerFailure)
-				w.WriteMsg(m)
-			}
-		}
-		// RESPOND, if desired (mutually exclusive with REDIRECT)
+		handleRedirect(w,req,c.Redirect)
+	// RESPOND, if desired (mutually exclusive with REDIRECT)
 	} else if len(c.Respond) > 0 {
-		m := new(dns.Msg)
-		m.SetReply(req)
-		m.SetRcode(req, dns.RcodeSuccess)
-
-		m.Answer = make([]dns.RR, len(req.Question))
-		for i := range req.Question {
-			log.Println("Responding to " + req.Question[i].Name + " with " + c.Respond)
-
-			ip := net.ParseIP(c.Respond)
-			if ip == nil {
-				// This is not a valid IP address, so assume it's a CNAME
-				rr := new(dns.CNAME)
-				rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
-					Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 0}
-				rr.Target = strings.TrimSuffix(c.Respond, ".") + "."
-				m.Answer[i] = rr
-			} else if ip.To4() == nil {
-				// This is an IPv6 address, so do a AAAA record
-				rr := new(dns.AAAA)
-				rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
-					Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				rr.AAAA = ip
-				m.Answer[i] = rr
-			} else {
-				// This is an IPv4 address, so do an A record
-				rr := new(dns.A)
-				rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
-					Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-				rr.A = ip
-				m.Answer[i] = rr
-			}
-		}
-		w.WriteMsg(m)
+		handleRespond(w,req,c.Respond)
+	} else if c.Rebind != nil && len(c.Rebind.Addrs) > 0 {
+		rc := c.Rebind
+		// Do round robin on the list of addrs (but concurrently-safe)
+		ctrAny, _ := RebindMap.LoadOrStore(ck, &atomic.Uint64{})
+		ctr, _ := ctrAny.(*atomic.Uint64)
+		respond := rc.Addrs[(ctr.Add(1) - 1) % uint64(len(rc.Addrs))] // We want the pre-increment value, hence -1
+		handleRespond(w,req,respond)
 	}
 
 	body := "source: " + w.RemoteAddr().String() + "\n" +
@@ -198,4 +165,69 @@ func handleDNS(w dns.ResponseWriter, req *dns.Msg, config MadnsConfig) {
 	if len(c.NotifySlack) > 0 {
 		sendSlackMessage(c.NotifySlack, body)
 	}
+}
+
+func handleRedirect(w dns.ResponseWriter, req *dns.Msg, redirect string) {
+	dnsClient := &dns.Client{Net: "udp", ReadTimeout: 4 * time.Second, WriteTimeout: 4 * time.Second, SingleInflight: true}
+	if _, ok := w.RemoteAddr().(*net.TCPAddr); ok {
+		dnsClient.Net = "tcp"
+	}
+
+	slog.Info("redirecting using protocol: " + dnsClient.Net)
+
+	retries := 1
+	retry:
+	r, _, err := dnsClient.Exchange(req, redirect)
+	if err == nil {
+		r.Compress = true
+		w.WriteMsg(r)
+	} else {
+		if retries > 0 {
+			retries--
+			slog.Debug("retrying...")
+			goto retry
+		} else {
+			slog.Warn(fmt.Sprintf("failure to forward request %q\n", err))
+			m := new(dns.Msg)
+			m.SetReply(req)
+			m.SetRcode(req, dns.RcodeServerFailure)
+			w.WriteMsg(m)
+		}
+	}
+}
+
+func handleRespond(w dns.ResponseWriter, req *dns.Msg, respond string) {
+	m := new(dns.Msg)
+	m.SetReply(req)
+	m.SetRcode(req, dns.RcodeSuccess)
+
+	m.Answer = make([]dns.RR, len(req.Question))
+	for i := range req.Question {
+		slog.Info("Responding to " + req.Question[i].Name + " with " + respond)
+
+		ip := net.ParseIP(respond)
+		if ip == nil {
+			// This is not a valid IP address, so assume it's a CNAME
+			rr := new(dns.CNAME)
+			rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
+			Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 0}
+			rr.Target = strings.TrimSuffix(respond, ".") + "."
+			m.Answer[i] = rr
+		} else if ip.To4() == nil {
+			// This is an IPv6 address, so do a AAAA record
+			rr := new(dns.AAAA)
+			rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
+			Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
+			rr.AAAA = ip
+			m.Answer[i] = rr
+		} else {
+			// This is an IPv4 address, so do an A record
+			rr := new(dns.A)
+			rr.Hdr = dns.RR_Header{Name: req.Question[i].Name,
+			Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
+			rr.A = ip
+			m.Answer[i] = rr
+		}
+	}
+	w.WriteMsg(m)
 }
